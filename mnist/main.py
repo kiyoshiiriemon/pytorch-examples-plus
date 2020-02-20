@@ -4,8 +4,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+import numpy as np
 from torchvision import datasets, transforms
 from torch.optim.lr_scheduler import StepLR
+from skimage import io, color, transform
+from matplotlib import pyplot as plt
 
 
 class Net(nn.Module):
@@ -54,6 +57,7 @@ def test(args, model, device, test_loader):
     correct = 0
     with torch.no_grad():
         for data, target in test_loader:
+            #print('data shape ' + str(data.shape))
             data, target = data.to(device), target.to(device)
             output = model(data)
             test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
@@ -66,6 +70,25 @@ def test(args, model, device, test_loader):
         test_loss, correct, len(test_loader.dataset),
         100. * correct / len(test_loader.dataset)))
 
+def test_single_image(model, device, image_file):
+    model.eval()
+    with torch.no_grad():
+        img = io.imread(image_file)
+        img = transform.resize(img, (28, 28), anti_aliasing=False)
+        img = color.rgb2gray(img).astype(np.float32)
+        io.imshow(img)
+        print(np.max(img))
+        #print(img)
+        img = np.expand_dims(img, axis=0)
+        img = np.expand_dims(img, axis=0)
+        img = torch.tensor(img)
+        plt.show()
+        data = img.to(device)
+        output = model(data)
+        print(output)
+        pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
+        pred_arr = pred.cpu().numpy()
+        print('prediction: ' + str(pred_arr[0][0]))
 
 def main():
     # Training settings
@@ -89,6 +112,10 @@ def main():
 
     parser.add_argument('--save-model', action='store_true', default=False,
                         help='For Saving the current Model')
+
+    parser.add_argument('--test-image', type=str, default="",
+                        help='Test image using the saved model')
+
     args = parser.parse_args()
     use_cuda = not args.no_cuda and torch.cuda.is_available()
 
@@ -112,6 +139,12 @@ def main():
         batch_size=args.test_batch_size, shuffle=True, **kwargs)
 
     model = Net().to(device)
+
+    if len(args.test_image) > 0:
+        model.load_state_dict(torch.load("mnist_cnn.pt"))
+        test_single_image(model, device, args.test_image)
+        return
+
     optimizer = optim.Adadelta(model.parameters(), lr=args.lr)
 
     scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
